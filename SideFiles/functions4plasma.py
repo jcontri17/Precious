@@ -11,7 +11,6 @@ ee = 1.6022e-19
 m_e = 5.486e-4*amu
 mu0 = np.pi * 4e-7
 eps0 = 8.85e-12
-ccc = 2.98e8
 
 #source: DOI 10.1007/978-1-4757-4030-1 (pg 10)
 def plasmaFreq(n0, m):

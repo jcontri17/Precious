@@ -1,0 +1,38 @@
+domdim = 2D
+model = sporer
+
+E = 3.33
+Xs = 0.73
+B0 = 30
+T = 100
+
+Rw = 6.1
+zLen = 50
+zBuff = 0.8
+
+XH = 0          
+XD = 0.5
+XT = 0.5
+
+Zi = 1
+XH = 0
+XD = 0.5
+XT = 0.5
+
+Nr = 1000
+Np = 1
+Nz = 1000
+
+domx = 1.0
+domy = 0.8
+
+#Steinhauer Model Parameters
+sig = 1.5
+f = 1.5
+
+
+
+
+
+
+

@@ -18,7 +18,6 @@ from matplotlib.ticker import AutoMinorLocator
 from matplotlib.path import Path
 from scipy.interpolate import RegularGridInterpolator
 from matplotlib.colors import LogNorm
-from matplotlib import colors
 #from scipy.integrate import cumulative_trapezoid as cumtrapz
 
 
@@ -471,50 +470,54 @@ def get_flux_contours(psi, R, Z, psi_level_mag, return_all=False):
 #######################################################################################################
 Lconv = 1e-2            #length conversion used so that displayed lengths in the code are in [cm]
 ###------------------------------------------------------------------------------------------PARAMETERS
-E           = 4.0                       #FRC elongation [\]
-Xs          = 0.6                       #normalized separatrix ratio [\]
-zLen        = 5.0                       #[cm]
-B0          = 30
-T_eV        = 50                        #Temperature [eV]
-Zi          = 1                         #ion charge number [\]
+Xs = 0.73            #normalized separatrix ratio [\]
+E = 4.5
 
-h           = zLen*Lconv / 2                  #liner height (from z=0) [m]
-liner_top   = h       #[m]
-liner_bot   = -h      #[m]
+zLen = 2.5                  #[cm]
+liner_top = zLen*Lconv       #[m]
+liner_bot = -0.3*Lconv      #[m]
+liner_bot = -zLen*Lconv      #[m]
+h = liner_top - liner_bot   #[m]
 
-Rc          = 0.61*Lconv                #coil radius; assumed to by Rw here [m]
-Rw          = Rc                        #flux-conserving wall radius [m]
-Rs          = Xs * Rw                   #separatrix radius [m]
-Zs          = E * Rs                    #separatrix half-length [m]
+Rw = 0.6*Lconv         #flux-conserving wall radius [m]
+Rc = Rw                 #coil radius; assumed to by Rw here [m]
+Rs = Xs * Rw            #separatrix radius [m]
+Zs = E * Rs
+#R0 = Rs / np.sqrt(2)    #O-point [m]
 
 
-a           = Rs                        #FRC semi-minor radius [m]
-b           = Zs                        #FRC semi-major radius [m]
-sig         = 1.5                       #flare parameter; adjustable parameter that's fixed for Steinhauer's paper
-f           = 1.5                       #internal psi error factor for Sporer's approximation
-eps         = a / b                     #inverse elongation
+a = Rs                  #FRC semi-minor radius [m]
+b = Zs                  #FRC semi-major radius [m]
 
-Be          = B0 / (1-Xs**2)
-Bw = Be
-print("mass")
+sig = 1.5               #flare parameter; adjustable parameter that's fixed for Steinhauer's paper
+f = 1.5                 #internal psi error factor for Sporer's approximation
+eps = a / b             #inverse elongation
+
+B0 = 4.04*1.41
+#B0 = 30
+Be = B0 / (1-Xs**2)
+Bw = Be                 #Magnetic field at the midplane at the wall [T] from Steinhaur
+B00 = Bw                #Sporer vacuum field [T] still working out how this relates to Steinhauer
+Zi = 1                  #ion charge number [\]
 m_ave = (3.016*amu + 2.014*amu) / 2
+T_eV = 460              #Temperature [eV]
 T = T_eV * eV/kb        #Temp number in [K]
+print("m_ave = ", m_ave)
 
-zBuff = 0.8
-if Zs > zBuff*h:
-    print("FRC is too long: Zs > zBuff*h")
-    print("               {:.2e} [m] > {:.2e} [m]".format(Zs, zBuff*h))
+if Zs > 0.75*h/2:
+    print("FRC is too long: Zs > h/2")
+    print("               {:.2e} [m] > {:.2e} [m]".format(Zs, h/2))
     print("Reduce E or Xs")
 
 ###----------------------------------------------------------------------------------------DOMAIN SETUP
 domx = 1.0                                  #weight to extend the domain; helps show psi=1 curves better
 Rd = Rw * domx                              #half-length of computational domain in r-dir [m]
-Zd = h * domx                             #half-length of computational domain in z-dir [m]
+Zd = h/2 * domx                             #half-length of computational domain in z-dir [m]
 
 dr = 0.001*Lconv                            #mesh fidelity in r-dir [m]
 dz = 0.001*Lconv                            #mesh fidelity in z-dir [m]
 
-r = np.arange(-Rd, Rd + dr, dr)
+r = np.arange(0, Rd + dr, dr)
 z = np.arange(-Zd, Zd + dz, dz)
 R, Z = np.meshgrid(r, z, indexing='ij')
 
@@ -524,7 +527,7 @@ print("Domain Size: {:.3e}m x {:.3e}m".format(2*Rd, 2*Zd))
 print("Domain Size: Rd = {:.3e} m     Zd = {:.3e}".format(Rd, Zd))
 
 ###-------------------------------------------------------------------------------------EXTERNAL REGION
-Eguess = [Be, Be/3, Be/5, 0.9]              #initial guess for E parameters
+Eguess = [Bw, Bw/3, Bw/5, 0.9]              #initial guess for E parameters
 sol = root(                                 #solves the system of external E equations
     fun=external_E_params,                  #designates the function
     x0=Eguess,                              #initial guesses for E0, E1, E2, alpha
@@ -538,7 +541,7 @@ if not sol.success:                         #if E root finder is unsuccessful, d
 else:
     E0, E1, E2, alpha = sol.x               #grabs the solutions for E0, E1, E2, alpha
 
-    psi_ext = external_psi(R, Z, Be, a, b, E0, E1, E2, alpha)                  #external magnetic flux
+    psi_ext = external_psi(R, Z, B00, a, b, E0, E1, E2, alpha)                  #external magnetic flux
     dpsi__dr_ext = external_dpsi__dr(R, Z, Bw, a, b, E0, E1, E2, alpha)         #[T*m^2]; gradient of
     dpsi__dz_ext = external_dpsi__dz(R, Z, Bw, a, b, E0, E1, E2, alpha)         #external magnetic flux
     Br_ext = -(1/R) * dpsi__dz_ext          #radial magnetic field [T]          #[T*m]
@@ -548,18 +551,20 @@ else:
 N = shape_index_N3(a, b, Xs)                #shape index [\]; N=0 (racetrack), N=1 (ellipse/Hills vortex)
 D0 = internal_D0(eps)                       #D_0 constant [\]
 D1 = internal_D1(eps)                       #D_1 constant [\]
-b0 = internal_B0(a, b, Xs, Bw)              #nominal magnetic field [T]
-b1 = internal_B1(b0, D0, D1, N, eps)        #"other field component"; not pictured [T]
-Beplus = external_Be(Bw, a, b, Xs)              #External magnetic field just outside the separatrix [T]
+B0 = internal_B0(a, b, Xs, Bw)              #nominal magnetic field [T]
+B1 = internal_B1(B0, D0, D1, N, eps)        #"other field component"; not pictured [T]
+Be = external_Be(Bw, a, b, Xs)              #External magnetic field just outside the separatrix [T]
+Bee = sporer_Be(Xs, B00)                    #Sporer's external magnetic field [T]
+
 
 
 ###-------------------------------------------------------------------------------------INTERNAL REGION
 model = "sporer"     #choose between Steinhauer's full solution (stein), or the approx for E>>1 (sporer)
 
 if model=="stein":
-    psi_int = internal_psi_stein(R, Z, a, b, b0, b1, D0, D1)                #internal magnetic flux
-    Br_int = (1/R) * internal_dpsi__dz_stein(R, Z, a, b, b0, b1, D0, D1)    #[T*m^2]; internal radial and
-    Bz_int = -(1/R) * internal_dpsi__dr_stein(R, Z, a, b, b0, b1, D0, D1)   #axial magnetic fields [T]
+    psi_int = internal_psi_stein(R, Z, a, b, B0, B1, D0, D1)                #internal magnetic flux
+    Br_int = (1/R) * internal_dpsi__dz_stein(R, Z, a, b, B0, B1, D0, D1)    #[T*m^2]; internal radial and
+    Bz_int = -(1/R) * internal_dpsi__dr_stein(R, Z, a, b, B0, B1, D0, D1)   #axial magnetic fields [T]
 elif model=="sporer":
     psi_int = internal_psi_sporer(R, Z, a, b, Bw, Xs, f)                   
     Br_int = (1/R) * internal_dpsi__dz_sporer(R, Z, a, b, Bw, Xs)
@@ -567,7 +572,10 @@ elif model=="sporer":
 
 
 B_int = np.sqrt(Br_int**2 + Bz_int**2)
+print(np.max(B_int))
+print(B_int)
 ave_Bi = np.mean(B_int)
+print("<B_i> = {:.3f} [T]".format(ave_Bi))
 #Finds indexing for the midplane Bz check
 mid_z = np.argmin(np.abs(z))
 mid_r = int(len(r)/2)
@@ -592,7 +600,6 @@ elif construct=="net":
     Bz = (1/R) * dpsi_dr
 # Br(r,z) and Bz(r,z) have been created
 
-Bmag = np.sqrt(Br**2 + Bz**2)
 
 rSep, zSep = get_flux_contours(psi, R, Z, 0)            #gets a contour of the separatrix (psi=0)
 r0_comb, z0_comb = get_flux_contours(psi, R, Z, 0)
@@ -623,131 +630,17 @@ mask = r >= 0
 # 1-D r and matching Bz along z=0
 rSlice = r[mask]            # shape (Nr_pos,)
 BSlice = Bz[mask, mid_z]    # shape (Nr_pos,)
+idxB = np.nanargmin(np.abs(BSlice))
+r_zero = rSlice[idxB]
+bz_at_min = BSlice[idxB]
+print(f"min|Bz| at r={r_zero:.6g}, Bz={bz_at_min:.3e}")
+mid_z = int(np.argmin(np.abs(z)))
+r_col  = R[:, mid_z]         # 2-D column of r values at z=0
+bz_col = Bz[:, mid_z]
+mask   = r_col >= 0
+rSlice = r_col[mask]
+BSlice = bz_col[mask]
 
-
-#idxB = np.nanargmin(np.abs(BSlice))
-#r_zero = rSlice[idxB]
-#bz_at_min = BSlice[idxB]
-#print(f"min|Bz| at r={r_zero:.6g}, Bz={bz_at_min:.3e}")
-#mid_z = int(np.argmin(np.abs(z)))
-#r_col  = R[:, mid_z]         # 2-D column of r values at z=0
-#bz_col = Bz[:, mid_z]
-#mask   = r_col >= 0
-#rSlice = r_col[mask]
-#BSlice = bz_col[mask]
-
-
-
-
-
-##########=========================     PLOTTING Bmag(r,z)     =========================##########
-figTitle = 'Magnetic Field Magnitude'
-saveTitle = str(re.sub(r'[\\/*?:"<>|\n$]', '_', figTitle))
-ax0_saveTitle = saveTitle
-ax1_saveTitle = 'Magnetic Field Midplane Lineout'
-
-figXsize = 10
-figYsize = 6
-cmapName = 'Spectral_r'
-cbarLabel = r"$\boldsymbol{|B(r,z)|}$  $\boldsymbol{[T]}$"
-labelFontWeight = 'bold'
-lineWidth = 2
-
-Lconv = 1e-3
-X = R/Lconv          # r in mm (cell centers)
-Y = Z/Lconv          # z in mm
-vmin = 0
-vmax = axesLimit(Bmag,1)
-
-
-
-###----------Color bar management for dependent variable
-USE_LOG = False     #True -> LogNorm, False -> linear
-
-#copy cmap and set the "under"/"over" colors to be exactly the end colors
-cmap = plt.colormaps[cmapName].copy()
-cmap.set_under(cmap(0))          # below vmin -> same as lowest color
-cmap.set_over(cmap(cmap.N - 1))  # above vmax -> same as highest color
-
-numLvlCol = 100     #greatly affects processing speed but you do get a sexy color bar; maybe save 1000 for final plots
-if USE_LOG:
-    norm   = colors.LogNorm(vmin=vmin, vmax=vmax)
-    levels = np.geomspace(vmin, vmax, numLvlCol)
-    Zplot  = np.where(Bmag > 0, Bmag, np.nan)  # LogNorm needs > 0
-    Zplot = np.where(Bmag <= 0.0, vmin/10.0, Bmag)   # <-- key line
-else:
-    norm   = colors.Normalize(vmin=vmin, vmax=vmax, clip=True)
-    levels = np.linspace(vmin, vmax, numLvlCol)
-    Zplot  = Bmag
-
-
-
-###----------Ax1: Magnetic Field Contour
-fig1 = plt.figure(figsize=(figXsize, figYsize))
-ax0 = fig1.add_axes([0.05, 0.1, 0.25, 0.8])     #[x, y, width, height]
-ax1 = fig1.add_axes([0.55, 0.1, 0.40, 0.8])     
-contour = ax0.contourf(
-    X, Y, Zplot, levels=levels, cmap=cmap, norm=norm, extend='both'
-)
-cbar = fig1.colorbar(contour, ax=ax0, extend='both', label=cbarLabel)
-if USE_LOG:
-    ticks = np.geomspace(vmin, vmax, 5)
-    cbar.set_ticks(ticks)
-    cbar.set_ticklabels([r"$\boldsymbol{" + f"{t:.1f}" + r"}$" for t in ticks])
-else:
-    ticks = np.linspace(vmin, vmax, 5)
-    cbar.set_ticks(ticks)
-    cbar.set_ticklabels([r"$\boldsymbol{" + f"{t:.1f}" + r"}$" for t in ticks])
-    
-
-ax0.set_xlabel(r"$\boldsymbol{r}$  $\boldsymbol{[mm]}$")
-ax0.set_ylabel(r"$\boldsymbol{z}$  $\boldsymbol{[mm]}$")
-ax0.tick_params(axis='both', labelsize=12)
-for label in ax0.get_xticklabels() + ax0.get_yticklabels():
-    label.set_fontweight('bold')
-ax0.set_xlim(-Rd/Lconv, Rd/Lconv)
-ax0.set_ylim(-Zd/Lconv, Zd/Lconv)
-ax0.set_title(ax0_saveTitle, fontweight=labelFontWeight)
-ax0.set_aspect('equal', adjustable='box')
-
-
-
-###----------Ax2: Magnetic Field Midplane Lineout
-X_array = rSlice/Lconv
-Y_array = BSlice
-
-
-
-
-X_min   = 0
-X_max   = np.ceil(X_array[-1])
-X_step  = 10**np.floor(np.log10(X_array[-1]))
-Y_min   = axesLimit(BSlice, -1)
-Y_max   = axesLimit(BSlice, 1)
-Y_step  = 10
-
-print(Y_min, Y_max)
-X_label = r"$\boldsymbol{r}$  $\boldsymbol{[mm]}$"
-Y_label = r"$\boldsymbol{B(r,0)}$  $\boldsymbol{[T]}$"
-
-ax1.plot(X_array, Y_array, linewidth=lineWidth)
-ax1.set_xlabel(X_label)
-ax1.set_ylabel(Y_label)
-ax1.set_xlim(X_min, X_max)
-ax1.set_ylim(Y_min, Y_max)
-ax1.set_xticks(np.arange(X_min, X_max+X_step, X_step))
-ax1.set_yticks(np.arange(Y_min, Y_max+Y_step, Y_step))
-ax1.tick_params(axis='both', labelsize=12)
-for label in ax1.get_xticklabels() + ax1.get_yticklabels():
-    label.set_fontweight('bold')
-ax1.set_title(ax1_saveTitle, fontweight=labelFontWeight)
-ax1.grid(True)
-
-###----------Figure Finalization
-#fig1.tight_layout()
-plt.savefig(saveTitle, dpi=dpi_res)
-plt.show()
-#plt.close()
 
 
 
@@ -755,16 +648,16 @@ plt.show()
 
 ###----------------------------------------------------------------------------------------------OUTPUT
 print("FRC PARAMETERS---------------------------------------------------------------------------------")
-print("\t Rw = {:.4f} [mm] (Conducting Wall Radius)".format(Rw/Lconv))
-print("\t Rs = {:.4f} [mm] (Spearatrix Radius)".format(Rs/Lconv))
+print("\t Rw = {:.4f} [cm] (Conducting Wall Radius)".format(Rw/Lconv))
+print("\t Rs = {:.4f} [cm] (Spearatrix Radius)".format(Rs/Lconv))
 print("\t Xs = {:.4f} (Normalized Separatrix Radius)".format(Xs))
-#print("\t R0 = {:.4f} [cmm] (O-point)".format(R0/Lconv))
+#print("\t R0 = {:.4f} [cm] (O-point)".format(R0/Lconv))
 print(" ")
 
 print("\t E = {:.4f} (FRC Elongation)".format(1/eps))
 print("\t eps = {:.4f} (Inverse Elongation)".format(eps))
-print("\t a = {:.4f} = [mm] (FRC Radius)".format(a/Lconv))
-print("\t b = {:.4f} [mm] (FRC Half Length)".format(b/Lconv))
+print("\t a = {:.4f} = [cm] (FRC Radius)".format(a/Lconv))
+print("\t b = {:.4f} [cm] (FRC Half Length)".format(b/Lconv))
 print("\t sig = {:.2f} (Adjustable Parameter)".format(sig))
 print(" ")
 
@@ -777,11 +670,10 @@ print("\t alpha = {:.4f} (0 < alpha < 1)".format(alpha))
 print(" ")
 
 print("\t B0 = {:.3f} [T]".format(B0))
+print("\t B1 = {:.3f} [T]".format(B1))
+print("\t Bw = {:.3f} [T]".format(Bw))
 print("\t Be = {:.3f} [T]".format(Be))
-print("\t Be+ = {:.3f} [T]".format(Beplus))
 print("\t <B_i> = {:.3f} [T]".format(ave_Bi))
-print("\t b0 = {:.3f} [T]".format(b0))
-print("\t b1 = {:.3f} [T]".format(b1))
 print("\t D0 = {:.4f} ".format(D0))
 print("\t D1 = {:.4f} ".format(D1))
 print(" ")
@@ -791,14 +683,14 @@ print(" ")
 # — build a single string with all your FRC parameters —
 summary_text = (
     "FRC PARAMETERS\n"
-    f"Rc = {Rw/Lconv:.4f} [mm] (Conducting Wall Radius)\n"
-    f"Rs = {Rs/Lconv:.4f} [mm] (Separatrix Radius)\n"
+    f"Rc = {Rw/Lconv:.4f} [cm] (Conducting Wall Radius)\n"
+    f"Rs = {Rs/Lconv:.4f} [cm] (Separatrix Radius)\n"
     f"Xs = {Xs:.4f} (Normalized Separatrix Radius)\n"
-#    f"R0 = {R0/Lconv:.4f} [mm] (O-point Radius)\n\n"
+#    f"R0 = {R0/Lconv:.4f} [cm] (O-point Radius)\n\n"
     f"E  = {1/eps:.4f} (FRC Elongation)\n"
     f"eps = {eps:.4f} (Inverse Elongation)\n"
-    f"a  = {a/Lconv:.4f} [mm] (FRC Radius)\n"
-    f"b  = {b/Lconv:.4f} [mm] (FRC Half Length)\n"
+    f"a  = {a/Lconv:.4f} [cm] (FRC Radius)\n"
+    f"b  = {b/Lconv:.4f} [cm] (FRC Half Length)\n"
     f"sig = {sig:.2f} (Adjustable Parameter)\n\n"
     f"N  = {N:.4f} (Shape Index; 0=racetrack 1=ellipse)\n"
     f"E0 = {E0:.4f}\n"
@@ -814,7 +706,7 @@ summary_text = (
 )
 
 
-#sys.exit()
+
 ###------------------------------------------------------------------------------------------------DIV(B)
 dBr__dr, dBr__dz = np.gradient(Br, r, z, edge_order=2)  #gradient of Br [T/m]
 dBz__dr, dBz__dz = np.gradient(Bz, r, z, edge_order=2)  #gradient of Bz [T/m]
@@ -829,29 +721,16 @@ divB_scaled = np.abs(divB) / (Bw/Rs)                    #scaled divergence of B 
 ###-----Debugging for the numerical anomalies in the divB calcs
 idx = 0
 idy = idx
-#print("Divergence of B:")
-#print("\tdBr__dr \t Br/R \t\t dBz__dz \t divB \t\t divB_scaled")
-#print(
-#    f"\t{dBr__dr[idx,idy]} "
-#    f"{Br[idx,idy]/R[idx,idy]} "
-#    f"{dBz__dz[idx,idy]} "
-#    f"{divB[idx,idy]} "
-#    f"{divB_scaled[idx,idy]}"
-#)
-#print("\t divB_scaled max and min", divB_scaled.max(), divB_scaled.min())
-
-
-
-
-
-
-
-
-
-
-
-
-
+print("Divergence of B:")
+print("\tdBr__dr \t Br/R \t\t dBz__dz \t divB \t\t divB_scaled")
+print(
+    f"\t{dBr__dr[idx,idy]} "
+    f"{Br[idx,idy]/R[idx,idy]} "
+    f"{dBz__dz[idx,idy]} "
+    f"{divB[idx,idy]} "
+    f"{divB_scaled[idx,idy]}"
+)
+print("\t divB_scaled max and min", divB_scaled.max(), divB_scaled.min())
 
 
 
@@ -861,83 +740,8 @@ idy = idx
 J = (1 / mu0) * (dBr__dz - dBz__dr)     #current density [A/m^2]
 Jphi = J
 
-
-JSlice = Jphi[mask, mid_z]    # shape (Nr_pos,)
-
-##########=========================     PLOTTING J(r,z)     =========================##########
-figTitle = 'Current Density Magnitude'
-saveTitle = str(re.sub(r'[\\/*?:"<>|\n$]', '_', figTitle))
-ax0_saveTitle = saveTitle
-ax1_saveTitle = 'Current Density Midplane Lineout'
-
-figXsize = 10
-figYsize = 6
-cmapName = 'plasma'
-Lconv = 1e-3
-
-X = R/Lconv          # r in mm (cell centers)
-Y = Z/Lconv          # z in mm
-vmin = Jphi.min()
-vmax = np.abs(Jphi).max()
-
-
-
-###----------Color bar management for dependent variable
-USE_LOG = False     #True -> LogNorm, False -> linear
-
-#copy cmap and set the "under"/"over" colors to be exactly the end colors
-cmap = plt.colormaps[cmapName].copy()
-cmap.set_under(cmap(0))          # below vmin -> same as lowest color
-cmap.set_over(cmap(cmap.N - 1))  # above vmax -> same as highest color
-
-if USE_LOG:
-    norm   = colors.LogNorm(vmin=vmin, vmax=vmax)
-    levels = np.geomspace(vmin, vmax, 100)
-    Zplot  = np.where(Jphi > 0, Jphi, np.nan)  # LogNorm needs > 0
-    Zplot = np.where(Jphi <= 0.0, vmin/10.0, Jphi)   # <-- key line
-else:
-    norm   = colors.Normalize(vmin=vmin, vmax=vmax, clip=True)
-    levels = np.linspace(vmin, vmax, 100)
-    Zplot  = Jphi
-
-
-
-###----------Ax1: Current Density Contour
-fig1, ax = plt.subplots(nrows=1, ncols=2, figsize=(figXsize, figYsize))
-contour = ax[0].contourf(
-    X, Y, Zplot, levels=levels, cmap=cmap, norm=norm, extend='both'
-)
-cbar = fig1.colorbar(contour, ax=ax[0], extend='both', label='$J_{\\phi}$  $[A/m^2]$')
-if USE_LOG:
-    ticks = np.geomspace(vmin, vmax, 5)
-    cbar.set_ticks(ticks)
-    cbar.set_ticklabels([f"{t:.1e}" for t in ticks])
-
-ax[0].set_xlabel('r [mm]')
-ax[0].set_ylabel('z [mm]')
-ax[0].set_xlim(-Rd/Lconv, Rd/Lconv)
-ax[0].set_ylim(-Zd/Lconv, Zd/Lconv)
-ax[0].set_title(ax0_saveTitle)
-ax[0].set_aspect('equal', adjustable='box')
-
-
-
-###----------Ax2: Current Density Midplane Lineout
-ax[1].plot(rSlice, JSlice, linewidth=lineWidth)
-ax[1].set_xlabel('r [mm]')
-ax[1].set_ylabel('$J_{\\phi}$  $[A/m^2]$')
-ax[1].set_title(ax1_saveTitle)
-ax[1].grid(True)
-
-###----------Figure Finalization
-fig1.tight_layout()
-plt.savefig(saveTitle, dpi=dpi_res)
-plt.show()
-#plt.close()
-
-
-
-
+print("===== CURRENT DENSITY =====")
+print(np.max(Jphi))
 
 
 
@@ -954,106 +758,18 @@ elif model=="stein":
     P = np.where(inside, P_int, 0)
 
 Pscaled = P/(Bw**2/(2*mu0))
-#print(Bw, Xs, psix, a, b, f, mu0)
-#Px = pressure_sporer(Bw, Xs, psix, a, b, f)       #his Be is my (and stein's) Bw
-#nx = Px / (kb * T)
-#print("Px = ", Px, "\t\t nx = ", nx)
+
+
 
 ###-----Debugging - Error Check
 # Compute numerical partials of your reconstructed P(r,z):
 dPdr_check, dPdz_check = np.gradient(P, r, z, edge_order=2)
 
 # Compare to the original dP__dr, dP__dz:
-#print("Pressure:")
-#print("\tMax Pressure = {:.3e} [Pa]".format(P_int.argmax()))
-#print("\t Max |dPdr_check - dP__dr| =", np.nanmax(np.abs(dPdr_check - dP__dr)))
-#print("\t Max |dPdz_check - dP__dz| =", np.nanmax(np.abs(dPdz_check - dP__dz)))
-
-PSlice = P[mask, mid_z]    # shape (Nr_pos,)
-
-
-
-##########=========================     PLOTTING P(r,z)     =========================##########
-figTitle = 'Plasma Pressure Magnitude'
-saveTitle = str(re.sub(r'[\\/*?:"<>|\n$]', '_', figTitle))
-ax0_saveTitle = saveTitle
-ax1_saveTitle = 'Pressure Midplane Lineout'
-
-figXsize = 10
-figYsize = 6
-cmapName = 'turbo_r'
-Lconv = 1e-3
-
-X = R/Lconv          # r in mm (cell centers)
-Y = Z/Lconv          # z in mm
-Zvar = P
-
-vmin = Zvar.min()
-vmax = np.abs(Zvar).max()
-
-
-
-###----------Color bar management for dependent variable
-USE_LOG = False     #True -> LogNorm, False -> linear
-
-#copy cmap and set the "under"/"over" colors to be exactly the end colors
-cmap = plt.colormaps[cmapName].copy()
-cmap.set_under(cmap(0))          # below vmin -> same as lowest color
-cmap.set_over(cmap(cmap.N - 1))  # above vmax -> same as highest color
-
-if USE_LOG:
-    norm   = colors.LogNorm(vmin=vmin, vmax=vmax)
-    levels = np.geomspace(vmin, vmax, 100)
-    Zplot  = np.where(Zvar > 0, Zvar, np.nan)  # LogNorm needs > 0
-    Zplot = np.where(Zvar <= 0.0, vmin/10.0, Zvar)   # <-- key line
-else:
-    norm   = colors.Normalize(vmin=vmin, vmax=vmax, clip=True)
-    levels = np.linspace(vmin, vmax, 100)
-    Zplot  = Zvar
-
-
-
-###----------Ax0: Pressure Density Contour
-fig1, ax = plt.subplots(nrows=1, ncols=2, figsize=(figXsize, figYsize))
-contour = ax[0].contourf(
-    X, Y, Zplot, levels=levels, cmap=cmap, norm=norm, extend='both'
-)
-cbar = fig1.colorbar(contour, ax=ax[0], extend='both', label='$P$  $[Pa]$')
-if USE_LOG:
-    ticks = np.geomspace(vmin, vmax, 5)
-    cbar.set_ticks(ticks)
-    cbar.set_ticklabels([f"{t:.1e}" for t in ticks])
-
-ax[0].set_xlabel('r [mm]')
-ax[0].set_ylabel('z [mm]')
-ax[0].set_xlim(-Rd/Lconv, Rd/Lconv)
-ax[0].set_ylim(-Zd/Lconv, Zd/Lconv)
-ax[0].set_title(ax0_saveTitle)
-ax[0].set_aspect('equal', adjustable='box')
-
-
-
-###----------Ax1: Pressure Midplane Lineout
-ax[1].plot(rSlice, PSlice, linewidth=lineWidth)
-ax[1].set_xlabel('r [mm]')
-ax[1].set_ylabel('$P$  $[Pa]$')
-ax[1].set_title(ax1_saveTitle)
-ax[1].grid(True)
-
-###----------Figure Finalization
-fig1.tight_layout()
-plt.savefig(saveTitle, dpi=dpi_res)
-plt.show()
-#plt.close()
-
-
-
-
-
-
-
-
-
+print("Pressure:")
+print("\tMax Pressure = {:.3e} [Pa]".format(P_int.argmax()))
+print("\t Max |dPdr_check - dP__dr| =", np.nanmax(np.abs(dPdr_check - dP__dr)))
+print("\t Max |dPdz_check - dP__dz| =", np.nanmax(np.abs(dPdz_check - dP__dz)))
 
 
 
@@ -1061,6 +777,7 @@ plt.show()
 
 ###------------------------------------------------------------------------------------NUMBER DENSITY
 
+print(kb, T)
 n_edges = P / (kb * T)
 
 r0_idx = np.searchsorted(r, 0.0)        # first r >= 0
@@ -1077,19 +794,21 @@ n_cc = 0.25 * (
     n_edges[:-1, 1:] +   # top-right
     n_edges[1:, 1:]      # bottom-right
 )
-
-
-ixe = 1                         #ratio of number of ions to electrons (1=quasineutrality)
-ni_cc = n_cc / (1 + 1/ixe)      #cell-centered ion density assuming quasineutrality [m^-3]
-ne_cc = n_cc / (1 + ixe)        #cell-centered electron density assuming quasineutrality [m^-3]
-
-
+n_cci = n_cc / 2
+n_cce = n_cc / 2
 
 #####---NUMBER DENSITY DEBUG
+print("NUMBER DENSITY DEBUG")
 n_max_edges = n_edges.max()
 n_max_cc = n_cc.max()
-ni_max = ni_cc.max()
-ne_max = ne_cc.max()
+
+
+print("\tMax Number Density (n_edges.argmax) = {:.3e} [m^-3]".format(n_max_edges))
+print("\tMax Number Density (n_cc.argmax) = {:.3e} [m^-3]".format(n_max_cc))
+print("\tMax Mass Density (n_edges.argmax) = {:.3e} [kg/m^3]".format(m_ave * n_max_edges))
+print("\tMax Mass Density (n_cc.argmax) = {:.3e} [kg/m^3]".format(m_ave * n_max_cc))
+print("P_int = ", P_int.argmax(), "P_max = ", P.argmax())
+
 
 
 r_cc = 0.5*(r[:-1] + r[1:])
@@ -1100,63 +819,57 @@ z0_idx = np.abs(z_cc - 0.0).argmin()
 
 r_cm   = r_cc[r0_idx:] * 1e2                     # r ≥ 0 in cm
 n_mid  = n_cc[r0_idx:, z0_idx]                   # midplane number density
-ni_mid  = ni_cc[r0_idx:, z0_idx]                   # midplane ion number density
-ne_mid  = ne_cc[r0_idx:, z0_idx]                   # midplane electron number density
 ni_mid = n_mid / 2
-ne_mid = n_mid / 2
-rho_mid = m_ave * ni_mid + m_e * ne_mid                          # mass density [kg m^-3] if m_ave in kg
+rho_mid = m_ave * ni_mid                          # mass density [kg m^-3] if m_ave in kg
 
 
-#average densities
-ni_ave = np.mean(ni_mid)
-ni_ave_cc = np.mean(ni_cc)
 
-ni_ave = ni_mid[ni_mid != 0].mean()
-ni_ave_cc = ni_cc[ni_cc != 0].mean()
+X = R_cc*1e2          # r in cm (cell centers)
+Y = Z_cc*1e2          # z in cm
 
-
-rho_cc = ni_cc * m_ave          #+ ne_cc * m_e       #mass density [kg/m^3]
+rho_cc = n_cci * m_ave       #mass density [kg/m^3]
 rho_cc = rho_cc * (1e-3)    #mass density [g/cm^3]
 
-vmin = 1.0e-5
-vmax = 1.0e-1
-Lconv = 1e-3
-
-print("==========   NUMBER DENSITY   ==========")
+vmin = 1.0e-7
+vmax = 1.0e-3
 print("n_max = {:.3e} [m^-3]".format(n_mid.max()))
-print("\tMax Number Density (n_edges.argmax) = {:.3e} [m^-3]".format(n_max_edges))
-print("\tMax Number Density (n_cc.argmax) = {:.3e} [m^-3]".format(n_max_cc))
-print("\tMax Ion Density (n_i,max) = {:.3e} [m^-3]".format(ni_max))
-print("\tMax Ion Density (ni_mid,max) = {:.3e} [m^-3]".format(ni_mid.max()))
-print("\tMax Electron Density (n_e,max) = {:.3e} [m^-3]".format(ne_max))
-print("\tMax Electron Density (ne_mid.max) = {:.3e} [m^-3]".format(ne_mid.max()))
-print("\tMax Mass Density (rho_cc.max) = {:.3e} [g/cm^3]".format(rho_cc.max()))
-print("\tMax Mass Density (rho_mid.max) = {:.3e} [kg/m^3]".format(rho_mid.max()))
-print("\tAverage Midplane Ion Number Density (n_i,ave) = {:.3e} [m^-3]".format(ni_ave))
-print("\tAverage Overall Ion Number Density (n_i,ave) = {:.3e} [m^-3]".format(ni_ave_cc))
-#print("P_int = ", P_int.argmax(), "P_max = ", P.argmax())
+'''
+###-----------------------------------MIDPLANE SLICES
+fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(6.5, 6.5), constrained_layout=True)
 
+# --- top: number density ---
+ax1.plot(r_cm, n_mid)
+ax1.set_ylabel(r'$n_{\mathrm{cc}}(r,0)\;[{\rm m^{-3}}]$')
+ax1.set_title('Cell-Centered Midplane Density (r ≥ 0)')
+ax1.grid(True)
 
+# --- bottom: mass density ---
+ax2.plot(r_cm, rho_mid*(1e-3))
+ax2.set_xlabel('r [cm]')
+ax2.set_ylabel(r'$\rho(r,0)=m_{\rm ave}\,n_{\rm cc}\;[{\rm g\,cm^{-3}}]$')
+ax2.set_title('Midplane Mass Density (r ≥ 0)')
+ax2.grid(True)
+#plt.show()
+#plt.close()
+'''
+'''
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib import colors
 
+# --- data (X, Y, rho_cc) are assumed already defined ---
 
-##########=========================     PLOTTING n(r,z)     =========================##########
-figTitle = 'Cell-Centered Number Density'
-saveTitle = str(re.sub(r'[\\/*?:"<>|\n$]', '_', figTitle))
-ax0_saveTitle = saveTitle
-ax1_saveTitle = 'Cell-Centered Midplane Density (r > 0)'
-cmapName = 'turbo'
-X = R_cc/Lconv          # r in cm (cell centers)
-Y = Z_cc/Lconv          # z in cm
-Zvar = rho_cc
-
-figXsize = 13
-figYsize = 8
+#r = np.arange(0, Rd + dr, dr)
+#z = np.arange(-Zd, Zd + dz, dz)
+#R, Z = np.meshgrid(r, z, indexing='ij')
+#R_cc = 0.5 * (R[:-1, :-1] + R[1:, 1:])
 
 # limits
 USE_LOG = True  # True -> LogNorm, False -> linear
 
 # copy cmap and set the "under"/"over" colors to be exactly the end colors
-cmap = plt.colormaps[cmapName].copy()
+cmap = plt.cm.get_cmap('turbo').copy()
+cmapBz = plt.cm.get_cmap('Spectral_r').copy()
 cmap.set_under(cmap(0))          # below vmin -> same as lowest color
 cmap.set_over(cmap(cmap.N - 1))  # above vmax -> same as highest color
 
@@ -1164,144 +877,262 @@ cmap.set_over(cmap(cmap.N - 1))  # above vmax -> same as highest color
 if USE_LOG:
     norm   = colors.LogNorm(vmin=vmin, vmax=vmax)
     levels = np.geomspace(vmin, vmax, 100)
-    Zplot  = np.where(Zvar > 0, Zvar, np.nan)  # LogNorm needs > 0
-    Zplot = np.where(Zvar <= 0.0, vmin/10.0, Zvar)   # <-- key line
-    #Zplot  = np.where(Zvar = 0, vmin/10, np.nan)  # LogNorm needs > 0
+    Zplot  = np.where(rho_cc > 0, rho_cc, np.nan)  # LogNorm needs > 0
+    Zplot = np.where(rho_cc <= 0.0, vmin/10.0, rho_cc)   # <-- key line
+    #Zplot  = np.where(rho_cc = 0, vmin/10, np.nan)  # LogNorm needs > 0
 else:
     norm   = colors.Normalize(vmin=vmin, vmax=vmax, clip=True)
     levels = np.linspace(vmin, vmax, 100)
-    Zplot  = Zvar
+    Zplot  = rho_cc
 
+plt.figure(figsize=(6, 8))
 
-fig4, ax = plt.subplots(nrows=1, ncols=2, figsize=(figXsize, figYsize))
-contour = ax[0].contourf(
+# extend='both' ensures regions <vmin and >vmax are filled;
+# with set_under/set_over equal to the endpoints, they appear clamped.
+contour = plt.contourf(
     X, Y, Zplot, levels=levels, cmap=cmap, norm=norm, extend='both'
 )
+levelsBz = np.linspace(-20,20,100)
+Bzcont = plt.contourf(
+    -R*100, Z*100, Bz, levels=levelsBz, cmap=cmapBz)
 
-cbar = fig4.colorbar(contour, ax=ax[0], extend='both', label='Mass Density, $[g/cm^{3}]$')
+cbar = plt.colorbar(contour, extend='both', label='Mass Density, $[g/cm^{3}]$')
+if USE_LOG:
+    ticks = np.geomspace(vmin, vmax, 5)
+    cbar.set_ticks(ticks)
+    cbar.set_ticklabels([f"{t:.1e}" for t in ticks])
+caxBz = plt.gcf().add_axes([0.05, 0.15, 0.03, 0.70])
+cbarBz = plt.colorbar(Bzcont, extend='both', cax=caxBz, label='$B_z$, $[T]$')
+ticksBz = np.geomspace(-20, 20, 100)
+cbarBz.set_ticks(ticksBz)
+cbarBz.set_ticklabels([f"{t:.1f}" for t in ticksBz])
+cbarBz.ax.set_position([0.05, 0.15, 0.03, 0.70])
+cbarBz.ax.yaxis.set_ticks_position('left')
+
+
+plt.xlabel('r [cm]')
+plt.ylabel('z [cm]')
+plt.xlim(-Rd/Lconv, Rd/Lconv)
+plt.ylim(-Zd/Lconv, Zd/Lconv)
+plt.title('Cell-Centered Mass Density')
+plt.gca().set_aspect('equal', adjustable='box')
+plt.tight_layout()
+plt.show()
+#plt.close()
+sys.exit()
+'''
+#===============================================================================================
+# ----------------- FIGURE + MAIN AXES -----------------
+fig = plt.figure(figsize=(6, 8))
+
+from matplotlib import colors
+# Main plot axes (leave room on both sides for colorbars)
+ax = fig.add_axes([0.18, 0.12, 0.64, 0.80])   # [left, bottom, width, height]
+
+# Colorbar axes: Bz on LEFT, density on RIGHT
+caxBz  = fig.add_axes([0.2, 0.12, 0.04, 0.80])
+caxRho = fig.add_axes([0.7, 0.12, 0.04, 0.80])
+
+cmap = plt.cm.get_cmap('turbo').copy()
+cmapBz = plt.cm.get_cmap('Spectral_r').copy()
+cmap.set_under(cmap(0))          # below vmin -> same as lowest color
+cmap.set_over(cmap(cmap.N - 1))  # above vmax -> same as highest color
+USE_LOG = True  # True -> LogNorm, False -> linear
+if USE_LOG:
+    norm   = colors.LogNorm(vmin=vmin, vmax=vmax)
+    levels = np.geomspace(vmin, vmax, 100)
+    Zplot  = np.where(rho_cc > 0, rho_cc, np.nan)  # LogNorm needs > 0
+    Zplot = np.where(rho_cc <= 0.0, vmin/10.0, rho_cc)   # <-- key line
+    #Zplot  = np.where(rho_cc = 0, vmin/10, np.nan)  # LogNorm needs > 0
+else:
+    norm   = colors.Normalize(vmin=vmin, vmax=vmax, clip=True)
+    levels = np.linspace(vmin, vmax, 100)
+    Zplot  = rho_cc
+
+# ----------------- PLOTTING -----------------
+# Density (main) filled contours
+rho_cont = ax.contourf(
+    X, Y, Zplot,
+    levels=levels,
+    cmap=cmap,
+    norm=norm,
+    extend='both'
+)
+
+# Bz (overlay) filled contours
+levelsBz = np.linspace(-20, 20, 100)
+bz_cont = ax.contourf(
+    -R*100, Z*100, Bz,
+    levels=levelsBz,
+    cmap=cmapBz,
+    extend='both',
+    alpha=0.85  # tweak: 0.6-0.9 so density still visible
+)
+
+# ----------------- COLORBARS -----------------
+
+# LEFT: Bz
+cbarBz = fig.colorbar(bz_cont, cax=caxBz, extend='both')
+cbarBz.set_label(r'$B_z$ [T]')
+cbarBz.ax.yaxis.set_ticks_position('left')
+cbarBz.ax.yaxis.set_label_position('left')
+
+# your tick choice (keep / adjust as you like)
+ticksBz = np.linspace(-20, 20, 5)
+cbarBz.set_ticks(ticksBz)
+cbarBz.set_ticklabels([f"{t:.1f}" for t in ticksBz])
+
+# RIGHT: density
+cbar = fig.colorbar(rho_cont, cax=caxRho, extend='both')
+cbar.set_label(r'Mass Density, $[g/cm^{3}]$')
+
 if USE_LOG:
     ticks = np.geomspace(vmin, vmax, 5)
     cbar.set_ticks(ticks)
     cbar.set_ticklabels([f"{t:.1e}" for t in ticks])
 
-ax[0].set_xlabel('r [mm]')
-ax[0].set_ylabel('z [mm]')
-ax[0].set_xlim(-Rd/Lconv, Rd/Lconv)
-ax[0].set_ylim(-Zd/Lconv, Zd/Lconv)
-ax[0].set_title(saveTitle)
-ax[0].set_aspect('equal', adjustable='box')
+# ----------------- AXES LABELS/LIMITS -----------------
+#caxRho.remove()
+ax.set_xlabel('r [cm]')
+ax.set_ylabel('z [cm]')
+ax.set_xlim(-Rd/Lconv, Rd/Lconv)
+ax.set_ylim(-Zd/Lconv, Zd/Lconv)
+ax.set_aspect('equal', adjustable='box')
 
-fig4.tight_layout()
-plt.savefig(saveTitle, dpi=dpi_res)
-#plt.close()
+# (optional) title
+#ax.set_title('Cell-Centered Mass Density (with $B_z$ overlay)')
 
-
-
-###-------------------------------------------------------------------------LEFT-RIGHT AXIS
-
-###-------------------------------------------------------------
-### FIGURE: Dual Y-Axis Plot
-###-------------------------------------------------------------
-lineWidth = 3
-figXsize = 6
-figYsize = 8
-
-X_array = r_cm * (1e1)
-Y1_array = n_mid
-Y2_array = rho_mid * (1e-3)
-
-X_min, X_max, X_nticks = 0, 6, 7
-Y1_min, Y1_max, Y1_nticks = 0, np.max(n_mid)*(1.2), 11
-Y2_min, Y2_max, Y2_nticks = 0, np.max(rho_mid)*(1e-3)*(1.2), 11
-
-X_label  = r"r $[mm]$"
-Y1_label = r"Total Number Density, $n_{cc}(r,0)$  $[m^{-3}]$"
-Y2_label = r"Mass Density, $\rho_{cc}(r,0)$  $[gcc]$"
-
-
-
-ax2 = ax[1].twinx()
-ax[1].plot(
-    X_array,
-    Y1_array,
-    linewidth=lineWidth,
-    linestyle='-',
-    color='blue',
-    label=Y1_label
-)
-
-ax2.plot(
-    X_array,
-    Y2_array,
-    linewidth=lineWidth,
-    linestyle='--',
-    color='red',
-    label=Y2_label
-)
-
-# --- labels ---
-ax[1].set_xlabel(X_label, fontsize=labelFontSize, fontweight=fontWeight)
-ax[1].set_ylabel(Y1_label, fontsize=labelFontSize, fontweight=fontWeight, color='blue')
-ax2.set_ylabel(Y2_label, fontsize=labelFontSize, fontweight=fontWeight, color='red')
-
-ax[1].set_title(figTitle, fontsize=labelFontSize, fontweight=fontWeight)
-
-# --- limits ---
-ax[1].set_xlim(X_min, X_max)
-ax[1].set_ylim(Y1_min, Y1_max)
-ax2.set_ylim(Y2_min, Y2_max)
-
-# --- ticks ---
-ax[1].set_xticks(np.linspace(X_min, X_max, X_nticks))
-ax[1].set_yticks(np.linspace(Y1_min, Y1_max, Y1_nticks))
-ax[1].tick_params(axis='y', labelcolor='blue')
-ax2.tick_params(axis='y', labelcolor='red')
-ax2.set_yticks(np.linspace(Y2_min, Y2_max, Y2_nticks))
-
-ax[1].tick_params(axis="both", which="major", labelsize=tickFontSize, colors='blue')
-ax2.tick_params(axis="y", which="major", labelsize=tickFontSize, colors='red')
-ax2.yaxis.set_major_formatter(FuncFormatter(sci_no_pad))
-
-# --- grid ---
-ax[1].grid(True)
-
-# --- legend (combine both axes) ---
-#lines1, labels1 = ax1.get_legend_handles_labels()
-#lines2, labels2 = ax2.get_legend_handles_labels()
-#ax1.legend(
-#    lines1 + lines2,
-#    labels1 + labels2,
-#    fontsize=tickFontSize
-#)
-
-###----------Figure Finalization
-fig4.tight_layout()
-plt.savefig(saveTitle, dpi=dpi_res)
+plt.savefig('fig1.png', dpi=dpi_res)
 plt.show()
-#plt.close()
-
-
-sys.exit()
+# plt.close(fig)   # uncomment if running in a loop
 
 
 
-'''
-###-----------------------------------MIDPLANE SLICES
-fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(6.5, 6.5), constrained_layout=True)
 
-# --- top: number density ---
-ax1.plot(r_cm, n_mid)
-ax1.set_ylabel(r'$n_{\\mathrm{cc}}(r,0);[{\\mathrm{m^{-3}}}]$')
-ax1.set_title('Cell-Centered Midplane Density (r ≥ 0)')
-ax1.grid(True)
 
-# --- bottom: mass density ---
-ax2.plot(r_cm, rho_mid*(1e-3))
-ax2.set_xlabel('r [cm]')
-ax2.set_ylabel(r'$\rho(r,0)=m_{ave} n_{cc}$  $[gcc]$')
-ax2.set_title('Midplane Mass Density (r ≥ 0)')
-ax2.grid(True)
-#plt.show()
-#plt.close()
-'''
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#===============================================================================================
+
+###------------------------------------------KINETICS CALCS
+def sbar_from_arrays(r, rho_i, R0, Rs, rho_min=None):
+    """
+    r, rho_i : 1D arrays sampled on the same grid
+    R0, Rs   : integration limits (Rs > R0)
+    rho_min  : optional floor to avoid division by ~0 (e.g., 1e-9)
+    """
+    r = np.asarray(r, dtype=float)
+    rho_i = np.asarray(rho_i, dtype=float)
+    if r.ndim != 1 or rho_i.ndim != 1 or r.size != rho_i.size:
+        raise ValueError("r and rho_i must be 1D arrays of equal length.")
+    if not (Rs > R0):
+        raise ValueError("Require Rs > R0.")
+
+    # make sure r is strictly increasing
+    if r[0] > r[-1]:
+        r = r[::-1]
+        rho_i = rho_i[::-1]
+
+    # clip or floor rho if desired
+    if rho_min is not None:
+        rho_i = np.maximum(rho_i, rho_min)
+
+    # Interpolate rho at the exact boundaries R0, Rs
+    # (assumes R0 and Rs lie within the span of r)
+    if not (r[0] <= R0 <= r[-1] and r[0] <= Rs <= r[-1]):
+        raise ValueError("R0 and Rs must lie within the r-range.")
+
+    rho_R0 = np.interp(R0, r, rho_i)
+    rho_Rs = np.interp(Rs, r, rho_i)
+
+    # Build subgrid including the exact endpoints
+    mask = (r >= R0) & (r <= Rs)
+    r_seg = r[mask]
+    rho_seg = rho_i[mask]
+
+    # Ensure endpoints are present (insert if R0/Rs fall between samples)
+    if r_seg.size == 0 or r_seg[0] > R0:
+        r_seg = np.insert(r_seg, 0, R0)
+        rho_seg = np.insert(rho_seg, 0, rho_R0)
+    elif r_seg[0] < R0:  # rare, but keep consistent
+        r_seg[0] = R0; rho_seg[0] = rho_R0
+
+    if r_seg[-1] < Rs:
+        r_seg = np.append(r_seg, Rs)
+        rho_seg = np.append(rho_seg, rho_Rs)
+    elif r_seg[-1] > Rs:
+        r_seg[-1] = Rs; rho_seg[-1] = rho_Rs
+
+    # Integral
+    integrand = r_seg / rho_seg
+    I = np.trapezoid(integrand, r_seg)
+    return I / Rs
+
+v_thi = np.sqrt(3 * kb * T / m_ave)             #ion thermal velocity [m/s]
+v_perp = v_thi                                  #ion perpendicular velocity [m/s]
+rho_ie = gyroRadius(m_ave, v_perp, Zi, Be)      #ion gyroradius [m]
+ni = ni_mid.max()                                #using the max density (O-point) as the reference density [m^-3]
+print("plasma frequency-----",ni, ee, m_ave, eps0)
+om_pi = np.sqrt((ni * ee**2) / (m_ave * eps0))  #plasma frequency [rad/s]
+delt_i = ccc / om_pi                            #ion inertial length (skin depth) [m]
+
+
+idxB = np.argmin(np.abs(BSlice))
+print("idxB =", idxB)
+r_zero = rSlice[idxB]              # same units as r
+r_zero_norm = rSlice[idxB]/Lconv   # if you want the normalized value you plot
+R0 = r_zero
+
+rho_iint = gyroRadius(m_ave, v_perp, Zi, B_int)
+rho_iintave = np.mean(rho_iint)
+rho_iSlice = gyroRadius(m_ave, v_perp, Zi, BSlice)
+#print(rSlice)
+#print(BSlice)
+
+###-----FOUR s PARAMETERS
+Sstar = Rs / delt_i
+S = R0 / rho_ie
+s = Rs / (4 * rho_iintave)
+sbar = sbar_from_arrays(rSlice, rho_iSlice, R0, Rs, rho_min=1e-8) 
+
+#print(mid_r, mid_z)
+#rSlice = r[:, mid_z]
+#BSlice = Bz[mid_r:, mid_z]
+
+
+print("KINETICS-------------------")
+print("\t Ion Thermal Velocity, v_th,i = {:.3e} [m/s]".format(v_thi))
+print("\t Ion Gyroradius (at wall magnetic field), rho_i,w = {:.3f} [mm]".format(rho_ie*1e3))
+print("\t Average Internal Ion Gyroradius, <rho_i,int> = {:.3f} [mm]".format(rho_iintave*1e3))
+print("\t Ion Inertial Length, delta_i = {:.3f} [mm]".format(delt_i*1e3))
+print("\t FRC Kinetic S = {:.3f}".format(S)) 
+print("\t FRC Kinetic S* = {:.3f}".format(Sstar)) 
+print("\t FRC Kinetic s = {:.3f}".format(s)) 
+print("\t FRC Kinetic sbar = {:.3f}".format(sbar)) 
+print("\t Magnetic Axis (O-point), R0 = {:.3f} [mm]".format(R0*1e3))
+print(f"\t min|Bz| at idxB={idxB}: r={r_zero:.6g} [m] (norm {r_zero_norm:.6g}), Bz={BSlice[idxB]:.3e} [T]")
+
+
 

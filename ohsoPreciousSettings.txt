@@ -1,0 +1,21 @@
+
+FRC_00: Inputs and Domain ==========================================
+INITIALIZATION-----------------------------
+    E  = 4.000           - FRC Elongation
+    Xs = 0.600           - Normalized Separatrix Radius
+    Rw = 6.100           [mm] - Wall Radius
+    Rs = 3.660           [mm]
+    Zs = 14.640          [mm]
+    B0 = 30.000          [T]
+    Be = 46.875          [T]
+    T  = 50.000          [eV]  (580200.000 K)
+    m_i = 4.175e-27       [kg]
+    Zi  = 1               - average ion charge
+DOMAIN-------------------------------------
+    domdim = 2D
+    model  = sporer
+    r-domain: 0.000 < r < 6.100 [mm]   dr = 0.122 [mm]
+    z-domain: -25.000 < z < 25.000 [mm]   dz = 1.000 [mm]
+    Total Grid Points = 2500  (Nr=50, Nphi=1, Nz=50)
+COMPUTATIONAL METRICS----------------------
+    frc00 Compute Time = 2.573e-04 [s]

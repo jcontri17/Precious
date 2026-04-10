@@ -1,0 +1,56 @@
+
+FRC_00: Inputs and Domain =============================================
+INITIALIZATION------------------------------
+    E  = 3.330                - FRC Elongation
+    Xs = 0.730                - Normalized Separatrix Radius
+    Rw = 6.100 [mm]           - Wall Radius
+    Rs = 4.453 [mm]           - Separatrix Radius
+    Zs = 14.828 [mm]          - Half Length
+    B0 = 30.000 [T]           - External Field
+    Be = 64.226 [T]           - Equilibrium Field
+    T  = 100.000 [eV]         - (1160400.000 K)
+    m_i = 4.175e-27 [kg]       - average ion mass
+    Zi  = 1                    - average ion charge
+DOMAIN---------------------------------------
+    domdim = 2D
+    model  = sporer
+    r-domain: 0.000 < r < 6.100 [mm]    dr = 0.006 [mm]
+    z-domain: -25.000 < z < 25.000 [mm]    dz = 0.050 [mm]
+    Total Grid Points = 1000000
+        Nr = 1000
+        Nφ = 1
+        Nz = 1000
+COMPUTATIONAL METRICS------------------------
+    frc00 Compute Time = 6.120e-03 [s]
+
+    
+FRC_04: EQUILIBRIUM FORMATION  ============================================= 
+	 <B_i> = 74.995 [T] 
+	 Bmax = 362.075 [T] 
+STEINHAUER PARAMETERS ------------------------------------------
+	 sig = 1.50 (Adjustable Parameter)
+
+	 N  = 0.1214 (Shape Index; 0=racetrack 1=ellipse)
+	 E0 = 0.9359
+	 E1 = 0.0044
+	 E2 = -0.5003
+	 alpha = 0.8261 (0 < alpha < 1)
+
+	 Be+ = 64.492 [T] 
+	 b0 = 57.5691 [T]
+	 b1 = 1.0451 [T]
+	 D0 = -0.9559
+	 D1 = -0.0441
+
+NUMBER DENSITY ------------------------------------------------
+n_max = 1.399e+26 [m^-3]
+	 Max Number Density (n_edges.argmax) = 1.399e+26 [m^-3]
+	 Max Number Density (n_cc.argmax) = 1.399e+26 [m^-3]
+	 Max Ion Density (n_i,max) = 6.997e+25 [m^-3]
+	 Max Ion Density (ni_mid,max) = 6.997e+25 [m^-3]
+	 Max Electron Density (n_e,max) = 6.997e+25 [m^-3]
+	 Max Electron Density (ne_mid.max) = 6.997e+25 [m^-3]
+	 Max Mass Density (rho_cc.max) = 2.921e-04 [g/cm^3]
+	 Max Mass Density (rho_mid.max) = 2.922e-01 [kg/m^3]
+	 Average Midplane Ion Number Density (n_i,ave) = 4.533e+25 [m^-3]
+	 Average Overall Ion Number Density (n_i,ave) = 3.903e+25 [m^-3]
